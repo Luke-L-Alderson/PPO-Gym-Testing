@@ -105,6 +105,7 @@ def a2c_learner(env, params, device):
     value_net = ValueNetwork(state_space, 1).to(device)
     value_optimizer = optim.Adam(value_net.parameters(), lr=lr)
     
+    # Set loss function to be used and init other variables
     mse_loss = nn.MSELoss()
     done, trunc = False, False
     reward_totals = []
@@ -112,11 +113,13 @@ def a2c_learner(env, params, device):
     
     for n in range(episodes):
         
-        steps, rewards = 0, 0
+        # Start a new episode
         
         state, info = env.reset()
+        steps, rewards = 0, 0
         state = torch.from_numpy(state).to(device)
         finished = False
+        
         while not finished:
             # Select an action using the Actor
             action_probs = policy_net(state)

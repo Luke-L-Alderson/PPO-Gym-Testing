@@ -1,6 +1,10 @@
 import torch.nn as nn
 import torch.nn.functional as F
 
+'''
+The Policy Network is the Actor, so named because it dictates the action to be
+taken when given a state as an input.
+'''
 class PolicyNetwork(nn.Module):
     def __init__(self, input_size, output_size):
         super().__init__()
@@ -14,6 +18,11 @@ class PolicyNetwork(nn.Module):
         action_probs = F.softmax(self.fc2(x), dim=-1)  # Apply softmax to output layer
         return action_probs
 
+'''
+The Value Network is the Critic, so named because it evaluates the performance
+of the Actor. In practice this means that the output of the Critic features in
+the objective function used to assess and improve Actor performance.
+'''
 class ValueNetwork(nn.Module):
     def __init__(self, input_size, output_size):
         super().__init__()
