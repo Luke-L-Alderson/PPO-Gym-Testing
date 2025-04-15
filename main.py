@@ -53,4 +53,4 @@ if __name__ == '__main__':
     else:
        # Run a hyperparameter sweep using params in the objective function
        study = optuna.create_study(direction='maximize')
-       study.optimize(objective, n_trials=10)
+       study.optimize(objective, n_trials=10, gc_after_trial=True)
