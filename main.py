@@ -11,15 +11,18 @@ import optuna
 from plotly.io import show
 import gc
 import os
+import plotly.io as pio
+import plotly.express as px
+pio.renderers.default='browser'
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 def objective(trial):
     
     params = {'episodes': 2000,
-              'lr': trial.suggest_loguniform('lr', 1e-5, 1e-2),
-              'gamma': trial.suggest_uniform('gamma', 0.8, 0.99),
+              'lr': trial.suggest_float('lr', 1e-5, 1e-2, log=True),
+              'gamma': trial.suggest_float('gamma', 0.8, 0.99),
               'trunc': 200,
-              'rollout_len': trial.suggest_int('rollout_len', 8, 64, 8),
+              'rollout_len': trial.suggest_int('rollout_len', 8, 512, step = 8, log=True),
               'eps': trial.suggest_float('eps', 0.1, 0.3),
               'update_epochs': 1,
               'iterations': 5000}
@@ -27,7 +30,7 @@ def objective(trial):
     #print(f"lr: {params['lr']}\ngamma: {params['gamma']}")
     print(params)
     env = gym.make('CartPole-v1', max_episode_steps = params.get("trunc"))
-    a2c_reward = ppo_learner(env, params, device)
+    a2c_reward = ppo_learner(env, params, device, trial)
     return sum(a2c_reward)/len(a2c_reward)
 
 if __name__ == '__main__':
@@ -42,7 +45,7 @@ if __name__ == '__main__':
         print("CUDA is not available. Using CPU.")
     
     # Set this to False to enable a full hyperparameter sweep with optun
-    one_off = False
+    one_off = True
     
     
     if one_off:
@@ -50,7 +53,7 @@ if __name__ == '__main__':
                  'lr': 6e-4,
                  'gamma': 0.85,
                  'trunc': 200,
-                 'rollout_len': 16,
+                 'rollout_len': 2**6,
                  'eps': 0.2,
                  'update_epochs': 1,
                  'iterations': 5000}
@@ -66,6 +69,7 @@ if __name__ == '__main__':
     else:
        # Run a hyperparameter sweep using params in the objective function
        study = optuna.create_study(direction='maximize')
-       study.optimize(objective, n_trials=20, gc_after_trial=True)
+       study.optimize(objective, n_trials=15, gc_after_trial=True)
        fig = optuna.visualization.plot_intermediate_values(study)
        show(fig)
+       plt.savefig(fig)

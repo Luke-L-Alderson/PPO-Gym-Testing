@@ -8,6 +8,7 @@ from torch.distributions import Categorical
 import gymnasium as gym
 from scipy.stats import entropy
 import copy
+import optuna
 
 def reinforce_learner(env, params, device):
     
@@ -174,7 +175,7 @@ def a2c_learner(env, params, device):
     print("Finished!\n")    
     return reward_totals
 
-def ppo_learner(env, params, device):
+def ppo_learner(env, params, device, trial = False):
     
     ''' 
     Description: Accepts an environment and a parameter dictionary and applies
@@ -252,11 +253,17 @@ def ppo_learner(env, params, device):
         
         old_policy_net = copy.deepcopy(policy_net)
             
+        divider = round(0.01*iterations)
         
-        if (n+1)%100==0:
+        if n==0 or n==iterations-1 or (n+1)%divider==0:
             eval_return = evaluate_policy(env, policy_net, device, num_episodes=5)
-            print(f"Iter: {n+1}, R: {eval_return}")
             reward_totals.append(eval_return)
+            if trial:
+                trial.report(eval_return, step=n)
+                if trial.should_prune():
+                    raise optuna.TrialPruned()
+            print(f"Iter: {n+1}, R: {eval_return}")
+            
     
     print("Finished!\n")    
     return reward_totals
@@ -338,4 +345,27 @@ def evaluate_policy(env, policy_net, device, num_episodes=5):
             state, reward, done, trunc, info = env.step(action)
             ep_return += reward
         returns.append(ep_return)
-    return sum(returns) / len(returns)    
+    return sum(returns) / len(returns)
+
+class PPOAgent(nn.Module):
+    def __init__(self, env, critic, actor):
+        '''
+
+        Parameters
+        ----------
+        env : TYPE
+            DESCRIPTION.
+
+        Returns
+        -------
+        None.
+
+        '''
+        pass
+    
+    def perform_policy_rollout():
+        pass
+    
+    def evaluate_performance():
+        pass
+        
