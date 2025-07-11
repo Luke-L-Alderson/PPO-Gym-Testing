@@ -10,12 +10,13 @@ from tetris_gymnasium.wrappers.observation import RgbObservation
 from learners import reinforce_learner, a2c_learner, ppo_learner, ppo_learner_image
 import numpy as np
 import optuna
-from plotly.io import show, renderers
+from plotly.io import show
+import gc
 import os
-
+import plotly.io as pio
 import plotly.express as px
 from tetris_gymnasium.mappings.rewards import RewardsMapping
-renderers.default='browser'
+pio.renderers.default='browser'
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 def objective(trial):
@@ -23,25 +24,21 @@ def objective(trial):
     params = {'episodes': 2000,
               'lr': trial.suggest_float('lr', 1e-5, 1e-2, log=True),
               'gamma': trial.suggest_float('gamma', 0.8, 0.99),
-              'trunc': 400,
+              'trunc': 200,
               'rollout_len': trial.suggest_int('rollout_len', 64, 128, step = 8, log=False),
               'eps': trial.suggest_float('eps', 0.1, 0.3),
               'update_epochs': 1,
-              'iterations': 1000,
-              'entropy': trial.suggest_categorical('entropy', [0, 0.001, 0.01, 0.02, 0.03, 0.1])}
+              'iterations': 5000,
+              'entropy': trial.suggest_categorical('entropy', [0.001, 0.01, 0.02, 0.03, 0.1])}
     
     #print(f"lr: {params['lr']}\ngamma: {params['gamma']}")
     print(params)
-    
-    #rewardmap = RewardsMapping(game_over=-10, alife=0, clear_line=1)
-    #env = gym.make("tetris_gymnasium/Tetris", render_mode="human", rewards_mapping = rewardmap)
-    #env = RgbObservation(env)
-    #env.render_scaling_factor = 10
-    #a2c_reward = ppo_learner_image(env, params, device, trial)
-    
-    env = gym.make('CartPole-v1', max_episode_steps = params.get("trunc"))
-    a2c_reward = ppo_learner(env, params, device, trial)
-    
+    #env = gym.make('CartPole-v1', max_episode_steps = params.get("trunc"))
+    rewardmap = RewardsMapping(game_over=-10, alife=0, clear_line=1)
+    env = gym.make("tetris_gymnasium/Tetris", render_mode="human", rewards_mapping = rewardmap)
+    env = RgbObservation(env)
+    env.render_scaling_factor = 10
+    a2c_reward = ppo_learner_image(env, params, device, trial)
     return sum(a2c_reward)/len(a2c_reward)
 
 if __name__ == '__main__':
@@ -56,7 +53,7 @@ if __name__ == '__main__':
         print("CUDA is not available. Using CPU.")
     
     # Set this to False to enable a full hyperparameter sweep with optun
-    one_off = False
+    one_off = True
     tetris = False
     
     if one_off:

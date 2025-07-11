@@ -219,10 +219,11 @@ def ppo_learner(env, params, device, trial = False):
         
         buffer = perform_rollout(env, old_policy_net, value_net, T, device) # (50, )
         
-       # return_to_go = get_returns(buffer["reward"], buffer["dones"], gamma) # NEW
+        #return_to_go = get_returns(buffer["reward"], gamma) # (50, ) OLD
+        return_to_go = get_returns(buffer["reward"], buffer["dones"], gamma) # NEW
         
         rollout_states = torch.stack(buffer["state"]).to(device)
-        #rollout_returns = torch.tensor(return_to_go).to(device)
+        rollout_returns = torch.tensor(return_to_go).to(device)
         rollout_actions = torch.tensor(buffer["action"]).to(device)
         rollout_values = torch.tensor(buffer["values"]).to(device)
         rollout_dones = torch.tensor(buffer["dones"]).to(device)
@@ -232,7 +233,7 @@ def ppo_learner(env, params, device, trial = False):
         with torch.no_grad():
             next_value = value_net(torch.tensor(buffer['state'][-1]).to(device))
         
-        #advantage = rollout_returns - rollout_values
+        advantage = rollout_returns - rollout_values
         advantage, rollout_returns = compute_gae(rollout_rewards, rollout_dones, rollout_values, next_value, gamma)
         rollout_returns = rollout_returns.to(device)
         advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
@@ -465,7 +466,21 @@ def compute_gae(
     gamma: float = 0.99,
     lam: float = 0.95
 ) -> (torch.Tensor, torch.Tensor):
+    """
+    Compute GAE advantages and returns.
 
+    Args:
+        rewards:  Tensor of shape (T,) or (T, N)
+        dones:    Tensor of same shape; 1.0 if episode ended, else 0.0
+        values:   Tensor of shape (T,) or (T, N)
+        next_value: Tensor of shape (N,) or scalar: V(s_{T})
+        gamma:    discount factor
+        lam:      GAE smoothing parameter
+
+    Returns:
+        advantages: Tensor same shape as rewards/values
+        returns:    Tensor same shape as rewards/values
+    """
     T = rewards.size(0)
     # buffer for advantages
     
@@ -489,20 +504,4 @@ def compute_gae(
     # compute discounted returns R_t = A_t + V_t
     returns = advantages + values[:-1]
     return advantages, returns
-
-class PPOagent():
-    def __init__(self, env):
-        print("Checking init")
-        
-    def _init_hyperparams():
-        pass
-        
-    def rollout():
-        pass
-    
-    def calculate_gae():
-        pass
-    
-    
-    
         
