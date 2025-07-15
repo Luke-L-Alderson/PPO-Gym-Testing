@@ -13,11 +13,24 @@ class PolicyNetwork(nn.Module):
         self.fch1 = nn.Linear(16, 32)
         self.fc2 = nn.Linear(32, output_size)  # Hidden to output layer
         
-    def forward(self, state):
-        x = F.relu(self.fc1(state))  # Apply ReLU activation on hidden layer
+    def forward(self, x):
+        x = F.relu(self.fc1(x))  # Apply ReLU activation on hidden layer
         x = F.relu(self.fch1(x))
         action_probs = F.softmax(self.fc2(x), dim=-1)  # Apply softmax to output layer
-        return action_probs
+        return action_probs 
+
+class ValueNetwork(nn.Module):
+    def __init__(self, input_size):
+        super().__init__()
+        self.fc1 = nn.Linear(input_size, 16)  # Input to hidden layer
+        self.fch1 = nn.Linear(16, 32)
+        self.fc2 = nn.Linear(32, 1)  # Hidden to output layer
+        
+    def forward(self, state):
+        x = F.relu(self.fc1(state))
+        x = F.relu(self.fch1(x))
+        x = F.relu(self.fc2(x))
+        return x
 
 class PolicyNetworkConv(nn.Module):
     def __init__(self, input_shape, action_space):
@@ -56,26 +69,7 @@ class PolicyNetworkConv(nn.Module):
         x = x.flatten(1)
         #print(f"After Flattening: {x.shape}")
         action_probs = F.softmax(self.fc1(x), dim=-1)  # Apply softmax to output layer
-        return action_probs    
-    
-
-'''
-The Value Network is the Critic, so named because it evaluates the performance
-of the Actor. In practice this means that the output of the Critic features in
-the objective function used to assess and improve Actor performance.
-'''
-class ValueNetwork(nn.Module):
-    def __init__(self, input_size, output_size):
-        super().__init__()
-        self.fc1 = nn.Linear(input_size, 16)  # Input to hidden layer
-        self.fch1 = nn.Linear(16, 32)
-        self.fc2 = nn.Linear(32, output_size)  # Hidden to output layer
-        
-    def forward(self, state):
-        x = F.relu(self.fc1(state))
-        x = F.relu(self.fch1(x))
-        x = F.relu(self.fc2(x))
-        return x
+        return action_probs   
 
 class ValueNetworkConv(nn.Module):
     def __init__(self, input_shape, action_space):

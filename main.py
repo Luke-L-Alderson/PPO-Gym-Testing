@@ -5,13 +5,17 @@ from env import DiceGame, run_episode, update_network
 from matplotlib import pyplot as plt
 from torch.distributions import Categorical
 import gymnasium as gym
+
 from tetris_gymnasium.envs.tetris import Tetris
 from tetris_gymnasium.wrappers.observation import RgbObservation
-from learners import reinforce_learner, a2c_learner, ppo_learner, ppo_learner_image
+from learners import reinforce_learner, a2c_learner, ppo_learner, ppo_learner_image, make_env
 import numpy as np
 import optuna
 from plotly.io import show, renderers
 import os
+from gymnasium.wrappers import RecordVideo
+from datetime import datetime
+from helpers import save_gif
 
 import plotly.express as px
 from tetris_gymnasium.mappings.rewards import RewardsMapping
@@ -40,6 +44,7 @@ def objective(trial):
     #a2c_reward = ppo_learner_image(env, params, device, trial)
     
     env = gym.make('CartPole-v1', max_episode_steps = params.get("trunc"))
+    env = gym.vector.SyncVectorEnv([make_env()]*10)
     a2c_reward = ppo_learner(env, params, device, trial)
     
     return sum(a2c_reward)/len(a2c_reward)
@@ -56,7 +61,7 @@ if __name__ == '__main__':
         print("CUDA is not available. Using CPU.")
     
     # Set this to False to enable a full hyperparameter sweep with optun
-    one_off = False
+    one_off = True
     tetris = False
     
     if one_off:
@@ -67,7 +72,7 @@ if __name__ == '__main__':
                  'rollout_len': 128,
                  'eps': 0.2,
                  'update_epochs': 1,
-                 'iterations': 5000,
+                 'iterations': 1000,
                  'entropy': 0.03}
        
        print(f"lr: {params_of['lr']}\ngamma: {params_of['gamma']}")
@@ -80,12 +85,17 @@ if __name__ == '__main__':
            env.render_scaling_factor = 10
            a2c_reward = ppo_learner_image(env, params_of, device)
        else:
-           env = gym.make('CartPole-v1', max_episode_steps = params_of.get("trunc"))
-           a2c_reward = ppo_learner(env, params_of, device)
+           trigger = lambda t: t % 100 == 0
+           timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+           env = gym.make('CartPole-v1', max_episode_steps = params_of.get("trunc"), render_mode='rgb_array')
+           
+           env = gym.vector.SyncVectorEnv([make_env()]*10)
+           #env = RecordVideo(env, video_folder=f"./training_videos", episode_trigger=trigger, disable_logger=True)
+           ppo_reward,  full_pixels = ppo_learner(env, params_of, device)
+           #save_gif(full_pixels, filename="cartpole.gif")
        
        
-       
-       plt.plot(a2c_reward)
+       plt.plot(ppo_reward)
        plt.show()
        
     else:
