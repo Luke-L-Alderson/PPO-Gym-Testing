@@ -41,7 +41,7 @@ class Agent(nn.Module):
         return action, probs.log_prob(action), probs.entropy(), self.critic(x)
         
 
-# Seperate value and policy networks
+# Seperate value and policy networks - LEGACY
 class PolicyNetwork(nn.Module):
     def __init__(self, input_size, output_size):
         super().__init__()
@@ -68,7 +68,7 @@ class ValueNetwork(nn.Module):
         x = F.relu(self.fc2(x))
         return x
 
-# Convolutional agent for pixel inputs [WIP]
+# Convolutional agent for pixel inputs - WIP
 class ConvAgent(nn.Module):
     def __init__(self, input_shape, action_space):
         super().__init__()

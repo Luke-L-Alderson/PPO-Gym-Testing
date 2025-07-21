@@ -1,26 +1,15 @@
 import torch
 from matplotlib import pyplot as plt
-import gymnasium as gym
 import optuna
 from plotly.io import show, renderers
 import os
-from datetime import datetime
-from learners import ppo_learner, PPOagent
-from helpers import make_env
+from learners import PPOagent
+from helpers import convert_to_one_dict
 import statistics as stats
-from collections import defaultdict
 import json
 
 renderers.default='browser'
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-
-def convert_to_one_dict(list_of_dicts):
-    result = defaultdict(list)
-    for d in list_of_dicts:
-        for key, value in d.items():
-            if value:
-                result[key].append(value)
-    return dict(result)
 
 def objective(trial):
     
@@ -55,7 +44,6 @@ def objective(trial):
     means = []
     for (key, val) in ppo_reward.items():
             means.append(stats.mean(val))
-    
 
     return stats.mean(means)
 
@@ -64,7 +52,7 @@ if __name__ == '__main__':
     # Let PyTorch use GPU
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    # Set this to False to enable a full hyperparameter sweep with optun
+    # Set this to False to enable a full hyperparameter sweep with optuna
     one_off = False
     
     if one_off:
@@ -79,7 +67,7 @@ if __name__ == '__main__':
                  'entropy': 0.03,
                  'num_envs': 4}
        
-       # import good parameters identified during Optuna trials
+       # import good parameters identified during Optuna trials and merge with base params
        import_params = json.load(open("good_params.txt"))
        params.update(import_params)
        

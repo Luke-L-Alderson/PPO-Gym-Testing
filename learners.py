@@ -84,9 +84,7 @@ def reinforce_learner(env, params, device):
 def a2c_learner(env, params, device):
     
     ''' 
-    Description: Accepts an environment and a parameter dictionary and applies
-    Advantage Actor Critic (A2C) to the provided environment.
-    
+    Description: Accepts an environment and a parameter dictionary and applies Advantage Actor Critic (A2C) to the provided environment.
     Returns: A list of returns for plotting
     '''
     
@@ -182,9 +180,7 @@ def ppo_learner(env, params, device, trial = False):
     '''
     LEGACY
     
-    Description: Accepts an environment and a parameter dictionary and applies
-    Proximal Policy Optimisation (PPO) to the provided environment.
-    
+    Description: Accepts an environment and a parameter dictionary and applies Proximal Policy Optimisation (PPO) to the provided environment.
     Returns: A list of returns for plotting
     '''
     
@@ -384,6 +380,12 @@ def ppo_learner_image(env, params, device, trial = False):
     return reward_totals
 
 class PPOagent(): # does not do value clipping, debug variables, or KL early stopping
+
+    '''
+    Description: OOP-approach to applying Proximal Policy Optimisation (PPO) to the provided environment.
+    Returns: A list of returns for plotting
+    '''
+
     def __init__(self,
                  trial = False,
                  env_name = 'CartPole-v1',
@@ -557,7 +559,7 @@ class PPOagent(): # does not do value clipping, debug variables, or KL early sto
             
         
         
-        writer.close() # or, writer.flush()
+        writer.close()
         stop_time = time.time() - start_time
         print(f"{stop_time} seconds.")
         self.env.close()

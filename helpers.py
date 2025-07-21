@@ -5,6 +5,7 @@ import torch
 from torch.distributions import Categorical
 import gymnasium as gym
 from gymnasium.wrappers import RecordVideo
+from collections import defaultdict
 
 def get_returns(rewards, dones, gamma=0.99):
     returns = []
@@ -74,7 +75,6 @@ def perform_rollout(env, state, actor, critic, T, device):
     
 def evaluate_policy(env, policy_net, device, num_episodes=5):
     returns = []
-    #print("Evaluating Current Policy")
     for num in range(num_episodes):
         state, info = env.reset()
         states = [state]
@@ -104,23 +104,20 @@ def compute_gae(
 ) -> (torch.Tensor, torch.Tensor):
 
     T = rewards.size(0)
-    # buffer for advantages
     
+    # buffer for advantages
     advantages = torch.zeros_like(rewards)
     
     # start GAE accumulator at zero (shape = batch‐shape)
     gae = torch.tensor(0)
 
-    # append V(s_{T}) so we can always look “one step ahead”
-    #next_value = next_value.unsqueeze(0)          # shape (1, N) or (1,)
-    #values = torch.cat([values, next_value], dim=0)
-
     for t in reversed(range(T)):
         # mask = 0 if done, 1 otherwise
         mymask = (~dones[t]).float()
+        
         # TD error δ_t = r_t + γ·V_{t+1}·mask − V_t
         delta = rewards[t] + gamma * values[t + 1] * mymask - values[t]
-        # GAE recursion
+        
         gae = delta + gamma * lam * mymask * gae
         advantages[t] = gae
 
@@ -128,9 +125,8 @@ def compute_gae(
     returns = advantages + values[:-1]
     return advantages, returns.float()
 
-'''
-Generator function for vectorised environments
-'''
+
+# Generator function for vectorised environments
 def make_env(environment = 'CartPole-v1', seed = 42, idx = 0, max_epsiode_steps = 200, capture_video = False):
     def thunk():
         env = gym.make(environment, max_episode_steps = max_epsiode_steps, render_mode='rgb_array')
@@ -143,27 +139,21 @@ def make_env(environment = 'CartPole-v1', seed = 42, idx = 0, max_epsiode_steps 
     return thunk
 
 def save_gif(frames: np.ndarray, filename: str = "tetris.gif", fps: int = 10, resize_to: tuple[int, int] = None):
-    """
-    Save a sequence of RGB frames as a GIF.
-
-    Args:
-        frames (np.ndarray): A NumPy array of shape [t, h, w, 3] and dtype uint8.
-        filename (str): Output GIF file path.
-        fps (int): Frames per second.
-        resize_to (tuple[int, int], optional): Resize each frame to this (width, height).
-    """
-
     t, c, h, w = frames.shape
-
     frames.reshape((t, h, w, c))
-
     assert frames.ndim == 4 and frames.shape[-1] == 3, "Expected shape [t, h, w, 3]"
     assert frames.dtype == np.uint8, "Frames must be of dtype uint8"
-
     if resize_to is not None:
         resized_frames = [cv2.resize(f, resize_to, interpolation=cv2.INTER_NEAREST) for f in frames]
     else:
         resized_frames = frames
-
     imageio.mimsave(filename, resized_frames, fps=fps)
     print(f"Saved {len(frames)} frames to {filename}")
+    
+def convert_to_one_dict(list_of_dicts):
+    result = defaultdict(list)
+    for d in list_of_dicts:
+        for key, value in d.items():
+            if value:
+                result[key].append(value)
+    return dict(result)
