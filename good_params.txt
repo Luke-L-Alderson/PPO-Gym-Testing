@@ -1,0 +1,1 @@
+{"lr": 0.0038831588628127738, "gamma": 0.9279258464536224, "rollout_len": 104, "eps": 0.16619875089724306, "update_epochs": 7, "entropy": 0.031502565797817045, "num_envs": 2, "annealing": true}

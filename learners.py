@@ -1,18 +1,16 @@
-from network_definitions import PolicyNetwork, ValueNetwork, PolicyNetworkConv, ValueNetworkConv
+from network_definitions import Agent, ConvAgent, ValueNetwork, PolicyNetwork
 import torch
 import torch.optim as optim
 import torch.nn as nn
-from env import DiceGame, run_episode, update_network
-from matplotlib import pyplot as plt
 from torch.distributions import Categorical
 import gymnasium as gym
-from scipy.stats import entropy
 import copy
 import optuna
-from helpers import save_gif
 import numpy as np
 from gymnasium.wrappers import RecordVideo
-from datetime import datetime
+from helpers import make_env
+import time
+from torch.utils.tensorboard import SummaryWriter
 
 def reinforce_learner(env, params, device):
     
@@ -181,9 +179,11 @@ def a2c_learner(env, params, device):
 
 def ppo_learner(env, params, device, trial = False):
     
-    ''' 
+    '''
+    LEGACY
+    
     Description: Accepts an environment and a parameter dictionary and applies
-    Advantage Actor Critic (A2C) to the provided environment.
+    Proximal Policy Optimisation (PPO) to the provided environment.
     
     Returns: A list of returns for plotting
     '''
@@ -220,7 +220,7 @@ def ppo_learner(env, params, device, trial = False):
     
     for n in range(iterations):
         
-        buffer = perform_rollout(env, old_policy_net, value_net, T, device) # (50, )
+        buffer = perform_rollout(env, state, old_policy_net, value_net, T, device) # (50, )
         
         rollout_states = buffer["state"].to(device)
         rollout_actions = buffer["action"].to(device)
@@ -266,6 +266,7 @@ def ppo_learner(env, params, device, trial = False):
         divider = round(0.05*iterations)
         
         num_episodes += rollout_dones.sum().item()
+        state = rollout_states[-1, :]
         
         if n==0 or n==iterations-1 or (n+1)%divider==0:
             eval_return, eval_num = evaluate_policy(env, policy_net, device, num_episodes=5)
@@ -283,10 +284,7 @@ def ppo_learner(env, params, device, trial = False):
 def ppo_learner_image(env, params, device, trial = False):
     
     ''' 
-    Description: Accepts an environment and a parameter dictionary and applies
-    Advantage Actor Critic (A2C) to the provided environment.
-    
-    Returns: A list of returns for plotting
+    WIP
     '''
     
     # Get hyperparameter values from the parameter dictionary
@@ -381,251 +379,225 @@ def ppo_learner_image(env, params, device, trial = False):
                 if trial.should_prune():
                     raise optuna.TrialPruned()
             print(f"Iter: {n+1}, R: {eval_return}, V: {value_loss}, P: {ppo_loss}, EpLen: {ep_length}, Last Action: {rollout_actions[-1]}")
-    #print(rollout_states.shape)     
-    #save_gif(rollout_states[max_index, :].char(), "demo.gif")
+
     print("Finished!\n")    
     return reward_totals
 
-def get_returns(rewards, dones, gamma=0.99):
-    returns = []
-    R = 0
-    for reward, done in zip(reversed(rewards), reversed(dones)):
-        if done:
-            R = 0
-        else:
-            R = reward + gamma * R
-        returns.insert(0, R)
-    return returns
-
-def select_action(policy, state):
-    
-    action_probs = policy(state)
-    try:
-        action_dist = Categorical(action_probs)
-    except:
-        print(f"State: {state.dtype} - {state.shape} - {state}")
-    action = action_dist.sample()
-    log_prob = action_dist.log_prob(action)
-    return action, log_prob
-
-def rgb2gray(rgb):
-    return np.dot(rgb[...,:3], [0.2989, 0.5870, 0.1140])
-
-def perform_rollout(env, actor, critic, T, device):
-    buffer = {
-        "state": [],
-        "action": [],
-        "reward": [],
-        "dones": [],
-        "old_log_probs": [],
-        "values": [],
-        "pixels": []
-        }
-    
-    state, info = env.reset()
-    state = torch.from_numpy(state).float().to(device)
-    for _ in range(T):
-        with torch.no_grad():
-            action, log_prob = select_action(actor, state)
-            value = critic(state)
-        next_state, reward, done, trunc, info = env.step(action.cpu().numpy())
-        next_state = torch.from_numpy(next_state).float().to(device)
-        
-        buffer["state"].append(state)
-        buffer["action"].append(action)
-        buffer["reward"].append(reward)
-        buffer["dones"].append(done)
-        buffer["old_log_probs"].append(log_prob)
-        buffer["values"].append(value) #env.render is numpy array
-        #print((env.render().shape))
-        #buffer["pixels"].append(rgb2gray(env.render()))
-        state = next_state.float()
-        
-        if len(state.shape) == 1 and (done or trunc):
-            state, info = env.reset()
-            state = torch.from_numpy(state).float().to(device)
-    
-    buffer["state"] = torch.cat(buffer["state"])
-    buffer["action"] = torch.cat(buffer["action"])
-    buffer["values"] = torch.cat(buffer["values"])
-    buffer["dones"] = torch.tensor(np.concat(buffer["dones"]))
-    buffer["old_log_probs"] = torch.cat(buffer["old_log_probs"])
-    buffer["reward"] = torch.tensor(np.concat(buffer["reward"]))
-        
-    return buffer
-    
-def evaluate_policy(env, policy_net, device, num_episodes=5):
-    returns = []
-    #print("Evaluating Current Policy")
-    for num in range(num_episodes):
-        state, info = env.reset()
-        states = [state]
-        done = False
-        trunc = False
-        ep_return = 0
-        while not (done or trunc):
-            with torch.no_grad():
-                state_tensor = torch.tensor(state).float().to(device)
-                action_probs = policy_net(state_tensor)
-                action = torch.argmax(action_probs, dim=-1)
-            state, reward, done, trunc, info = env.step(action.cpu().numpy())
-            #print(f"{num}: {reward}")
-            states.append(state)
-            done = done[-1]
-            trunc = trunc[-1]
-            
-            ep_return += reward[-1]
-        returns.append(ep_return)
-    return sum(returns) / len(returns), len(states)
-
-def compute_gae(
-    rewards: torch.Tensor,
-    dones: torch.Tensor,
-    values: torch.Tensor,
-    gamma: float = 0.99,
-    lam: float = 0.95
-) -> (torch.Tensor, torch.Tensor):
-
-    T = rewards.size(0)
-    # buffer for advantages
-    
-    advantages = torch.zeros_like(rewards)
-    
-    # start GAE accumulator at zero (shape = batch‐shape)
-    gae = torch.tensor(0)
-
-    # append V(s_{T}) so we can always look “one step ahead”
-    #next_value = next_value.unsqueeze(0)          # shape (1, N) or (1,)
-    #values = torch.cat([values, next_value], dim=0)
-
-    for t in reversed(range(T)):
-        # mask = 0 if done, 1 otherwise
-        mymask = (~dones[t]).float()
-        # TD error δ_t = r_t + γ·V_{t+1}·mask − V_t
-        delta = rewards[t] + gamma * values[t + 1] * mymask - values[t]
-        # GAE recursion
-        gae = delta + gamma * lam * mymask * gae
-        advantages[t] = gae
-
-    # compute discounted returns R_t = A_t + V_t
-    returns = advantages + values[:-1]
-    return advantages, returns.float()
-
-'''
-Generator function for vectorised environments
-'''
-def make_env(environment = 'CartPole-v1', seed = 42, idx = 0, max_epsiode_steps = 200, capture_video = False):
-    def thunk():
-        trigger = lambda t: t % 100 == 0
-        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-        env = gym.make(environment, max_episode_steps = max_epsiode_steps, render_mode='rgb_array')
-        #env.seed(seed)
-        #env.action_space.seed(seed)
-        #env.observation_space.seed(seed)
-        env = RecordVideo(env, video_folder=f"./training_videos", episode_trigger=trigger, disable_logger=True)
-        return env
-    
-    return thunk
-
-class PPOagent():
+class PPOagent(): # does not do value clipping, debug variables, or KL early stopping
     def __init__(self,
-                 environment = 'CartPole-v1',
+                 trial = False,
+                 env_name = 'CartPole-v1',
                  lr = 1e-6,
                  eps = 1e-5,
+                 entropy_coef = 0.01,
+                 value_coef = 0.5,
+                 trunc = 200,
                  max_episode_steps = 200, 
                  rollout_len = 128,
-                 training_steps = 10000,
-                 vectorised_envs = False,
+                 training_steps = 30000,
+                 num_minibatches = 4,
+                 update_epochs = 4,
+                 vectorised_envs = True,
+                 num_envs = 2,
                  record_video = False,
                  gamma = 0.99,
                  lam = 0.95,
+                 annealing = False,
+                 global_gradient_norm = 0.5,
+                 state_space_not_pixels = True,
                  device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
                  ):
         
         # init hyperparams
+        self.trial = trial
+        self.env_name = env_name
+        self.lr = lr
+        self.eps = eps
+        self.max_episode_steps = max_episode_steps 
+        self.rollout_len = rollout_len
+        self.training_steps = training_steps
+        self.vectorised_envs = vectorised_envs
+        self.record_video = record_video
+        self.gamma = gamma
+        self.lam = lam
+        self.num_envs = num_envs
+        self.device = device
+        self.annealing = annealing
+        self.num_minibatches = num_minibatches
+        self.update_epochs = update_epochs
+        self.trunc = trunc
+        self.batch_size = int(self.num_envs*self.rollout_len)
+        self.minibatch_size = self.batch_size // self.num_minibatches
+        self.num_updates = self.training_steps // self.batch_size
+        self.entropy_coef = entropy_coef
+        self.value_coef = value_coef
+        self.global_gradient_norm = global_gradient_norm
+        
+        
         
         # init environment
         if vectorised_envs:
-            assert not vectorised_envs, "Not yet implemented, set vectorised_envs to False"
+            self.env = gym.vector.SyncVectorEnv([make_env(environment=self.env_name, max_epsiode_steps=trunc)]*self.num_envs)
+            self.env = gym.wrappers.vector.RecordEpisodeStatistics(self.env)
+            self.env = gym.wrappers.vector.NumpyToTorch(self.env, self.device)
+            
         else:
-            env = gym.make(environment, max_episode_steps = max_episode_steps, render_mode='rgb_array')
+            self.env = gym.make(env_name, max_episode_steps = max_episode_steps, render_mode='rgb_array')
         
         if record_video:
             assert not vectorised_envs, "No recording support for vectorised environments in gym"
-            trigger = lambda t: t % 100 == 0
-            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-            env = RecordVideo(env, video_folder=f"./training_videos", episode_trigger=trigger, disable_logger=True)
+            self.env = RecordVideo(self.env, video_folder="./training_videos", episode_trigger=lambda t: t % 100 == 0, disable_logger=True)
         
+        assert isinstance(self.env.single_action_space, gym.spaces.Discrete), "Discrete Spaces Only"
+        
+        self.action_space = self.env.single_action_space.n
+        self.state_space = self.env.single_observation_space
+
         # init networks and optimizers
-        action_space = env.action_space.n
-        state_space = np.asarray(env.observation_space.shape)[0]
+        self.agent = Agent(self.env).to(device) if state_space_not_pixels else ConvAgent(self.env).to(device)
+        self.old_agent = copy.deepcopy(self.agent)
         
-        policy_net = PolicyNetwork(state_space, action_space).to(device)
-        old_policy_net = copy.deepcopy(policy_net)
-        value_net = ValueNetwork(state_space).to(device)
+        self.optimizer = optim.Adam(self.agent.parameters(), lr=lr, eps=eps)
+        self.mse_loss = nn.MSELoss()
         
-        policy_optimizer = optim.Adam(policy_net.parameters(), lr=lr, eps=eps)
-        value_optimizer = optim.Adam(value_net.parameters(), lr=lr, eps=eps)
-        
-        
-        # Define action and state space sizes.
-        # State Space --> [Cart Pos, Cart Vel, Pole Pos, Pole Vel]
-        # Action Space --> [0 (left), 1 (right)]
-        
+    def train_agent(self):
+        writer = SummaryWriter()
+        self.global_steps = 0
+        start_time = time.time()
+        next_obs, info = self.env.reset()
 
+        obs = torch.zeros((self.rollout_len, self.num_envs) + self.state_space.shape).to(self.device)
+        actions = torch.zeros((self.rollout_len, self.num_envs)).to(self.device)
+        log_probs = torch.zeros((self.rollout_len, self.num_envs)).to(self.device)
+        rewards = torch.zeros((self.rollout_len, self.num_envs)).to(self.device)
+        dones = torch.zeros((self.rollout_len, self.num_envs)).to(self.device)
+        values = torch.zeros((self.rollout_len, self.num_envs)).to(self.device)
+                
+        #inititialise environment
+        state, info = self.env.reset()
+        next_done = torch.zeros(self.num_envs).to(self.device)
+        next_trunc = torch.zeros(self.num_envs).to(self.device)
+        reporting_rewards = []
+        
+        for update in range(1, self.num_updates+1):
+            if self.annealing:
+                frac = 1 - (update - 1) / self.num_updates
+                lrnow = frac*self.lr
+                self.optimizer.param_groups[0]["lr"] = lrnow
+        
+            # record a rollout
+            
+            for step in range(self.rollout_len):
+                self.global_steps+=1*self.num_envs
+                obs[step] = next_obs
+                dones[step] = next_done
+                
+                with torch.no_grad():
+                    action, log_prob, entropy, value = self.agent.get_action_and_value(next_obs)
+                    values[step] = value.flatten()
+                
+                actions[step] = action
+                log_probs[step] = log_prob
+                next_obs, reward, next_done, next_trunc, info = self.env.step(action)
+                
+                rewards[step] = reward
+                
+                last_episode_returns = self.print_info(info, self.global_steps, printing = True)
+                if last_episode_returns is not None:
+                    reporting_rewards.append(last_episode_returns)
+                    if type(last_episode_returns[0]) is float:
+                        writer.add_scalar("Reward", last_episode_returns[0], global_step=self.global_steps)
+                    
+                    if self.trial:
+                        if type(last_episode_returns[0]) is float:
+                            self.trial.report(last_episode_returns[0], step=self.global_steps)
+                            if self.trial.should_prune():
+                                raise optuna.TrialPruned()
+            
+            
+            # calculate advantages
+            advantages, returns = self.calculate_gae(next_obs, next_done, rewards, dones, values)
+            
+            # calculate losses
+            batch_obs = obs.reshape((-1,)+self.env.single_observation_space.shape)
+            batch_actions = actions.reshape(-1)
+            batch_logprobs = log_probs.reshape(-1)
+            batch_advantages = advantages.reshape(-1)
+            batch_returns = returns.reshape(-1)
+            batch_values = values.reshape(-1)
+            
+            # Minibatch Training
+            batch_indices = np.arange(self.batch_size)
+            
+            for epoch in range(self.update_epochs):
+                np.random.shuffle(batch_indices)
+                for start in range(0, self.batch_size, self.minibatch_size):
+                    end = start + self.minibatch_size
+                    minibatch_indices = batch_indices[start:end]
+                    
+                    _, newlogprob, entropy, new_values = self.agent.get_action_and_value(batch_obs[minibatch_indices], batch_actions[minibatch_indices])
+                    logratio = newlogprob - batch_logprobs[minibatch_indices]
+                    ratio = logratio.exp()
+                    
+                    minibatch_advantages = batch_advantages[minibatch_indices]
+                    minibatch_advantages = (minibatch_advantages - minibatch_advantages.mean()) / (minibatch_advantages.std() + 1e-8)
 
+                    noclip_term = minibatch_advantages*ratio
+                    clip_term = torch.clamp(ratio, min=1-self.eps, max=1+self.eps)*minibatch_advantages
+                    policy_loss = -torch.min(noclip_term, clip_term).mean()
+                    value_loss = 0.5 * ((new_values.view(-1) - batch_returns[minibatch_indices])**2).mean()
+                    entropy_loss = entropy.mean()
+                    loss = policy_loss - self.entropy_coef * entropy_loss + self.value_coef * value_loss
+                    
+                    # update network
+                    self.optimizer.zero_grad()
+                    loss.backward()
+                    nn.utils.clip_grad_norm_(self.agent.parameters(), self.global_gradient_norm)
+                    self.optimizer.step()
+            
         
-        # Set loss function to be used and init other variables
-        mse_loss = nn.MSELoss()
-        reward_totals = []
-        global_steps = 0
-        max_eval = -1
-        max_index = 0
         
-    def _init_hyperparams(self, ):
-        
-        pass
-        
-    def rollout():
-        pass
+        writer.close() # or, writer.flush()
+        stop_time = time.time() - start_time
+        print(f"{stop_time} seconds.")
+        self.env.close()
+        return [x for x in reporting_rewards if x is not None]
     
-    def calculate_gae(rewards: torch.Tensor,
-                      dones: torch.Tensor,
-                      values: torch.Tensor,
-                      next_value: torch.Tensor,
-                      gamma: float = 0.99,
-                      lam: float = 0.95
-                      ) -> (torch.Tensor, torch.Tensor):
-
-        T = rewards.size(0)
-        
-        advantages = torch.zeros_like(rewards)
-        
-        # start GAE accumulator at zero (shape = batch‐shape)
-        gae = torch.zeros_like(next_value)
     
-        # append V(s_{T}) so we can always look “one step ahead”
-        #next_value = next_value.unsqueeze(0)          # shape (1, N) or (1,)
-        values = torch.cat([values, next_value], dim=0)
-    
-        for t in reversed(range(T)):
-            # mask = 0 if done, 1 otherwise
-            mymask = (~dones[t]).float()
-            # TD error δ_t = r_t + γ·V_{t+1}·mask − V_t
-            delta = rewards[t] + gamma * values[t + 1] * mymask - values[t]
-            # GAE recursion
-            gae = delta + gamma * lam * mymask * gae
-            advantages[t] = gae
-    
-        # compute discounted returns R_t = A_t + V_t
-        returns = advantages + values[:-1]
+    def calculate_gae(self, next_obs, next_done, rewards, dones, values):
+        with torch.no_grad():
+            next_value = self.agent.get_val(next_obs).reshape(1, -1)
+            advantages = torch.zeros_like(rewards).to(self.device)
+            lastgaelam = 0
+            for t in reversed(range(self.rollout_len)):
+                if t == self.rollout_len - 1:
+                    nextnonterminal = ~next_done
+                    nextvalues = next_value
+                else:
+                    nextnonterminal = 1.0 - dones[t + 1]
+                    nextvalues = values[t + 1]
+                delta = rewards[t] + self.gamma * nextvalues * nextnonterminal - values[t]
+                advantages[t] = lastgaelam = delta + self.gamma * self.lam * nextnonterminal * lastgaelam
+            returns = advantages + values
         return advantages, returns
     
-    def update_params():
-        pass
+    
+    def print_info(self, info, update=0, printing = False):
+        if info.get("_episode") is not None:
+            finished_episodes = [(idx) for (idx, val) in enumerate(info.get("_episode").tolist()) if val is True]
+            if printing:
+                print(f"Update {update}/{self.training_steps} - Finished Episode(s) {finished_episodes} - Episode Return(s): {info.get("episode").get("r").tolist()}")
+            result_dict = {key: [] for key in range(self.num_envs)}   
+            
+            for index in finished_episodes:
+                result_dict[index] = info.get("episode").get("r")[index].item()
+            
+            return result_dict
     
     
-    
+if __name__ == "__main__":
+    agent = PPOagent()
+    agent.train_agent()
     
     
         
