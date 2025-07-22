@@ -7,6 +7,9 @@ import gymnasium as gym
 from gymnasium.wrappers import RecordVideo
 from collections import defaultdict
 
+def moving_avg(data, kernel):
+    return np.convolve(data, np.ones(kernel), 'valid') / kernel
+
 def get_returns(rewards, dones, gamma=0.99):
     returns = []
     R = 0

@@ -417,7 +417,7 @@ class PPOagent(): # does not do value clipping, debug variables, or KL early sto
         self.eps = eps
         self.max_episode_steps = max_episode_steps 
         self.rollout_len = rollout_len
-        self.training_steps = training_steps
+        self.training_steps = int(training_steps)
         self.vectorised_envs = vectorised_envs
         self.record_video = record_video
         self.gamma = gamma
@@ -430,7 +430,7 @@ class PPOagent(): # does not do value clipping, debug variables, or KL early sto
         self.trunc = trunc
         self.batch_size = int(self.num_envs*self.rollout_len)
         self.minibatch_size = self.batch_size // self.num_minibatches
-        self.num_updates = self.training_steps // self.batch_size
+        self.num_updates = int(self.training_steps // self.batch_size)
         self.entropy_coef = entropy_coef
         self.value_coef = value_coef
         self.global_gradient_norm = global_gradient_norm
@@ -488,7 +488,6 @@ class PPOagent(): # does not do value clipping, debug variables, or KL early sto
                 self.optimizer.param_groups[0]["lr"] = lrnow
         
             # record a rollout
-            
             for step in range(self.rollout_len):
                 self.global_steps+=1*self.num_envs
                 obs[step] = next_obs
@@ -532,6 +531,7 @@ class PPOagent(): # does not do value clipping, debug variables, or KL early sto
             batch_indices = np.arange(self.batch_size)
             
             for epoch in range(self.update_epochs):
+                #print(f"learning {epoch+1}/{self.update_epochs+1}")
                 np.random.shuffle(batch_indices)
                 for start in range(0, self.batch_size, self.minibatch_size):
                     end = start + self.minibatch_size
