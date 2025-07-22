@@ -125,7 +125,7 @@ if __name__ == '__main__':
        ppo_reward = agent.train_agent()
        ppo_reward = convert_to_one_dict(ppo_reward)
        
-       plotting_data = moving_avg(np.array(ppo_reward[0]), len(ppo_reward[0])//10)
+       plotting_data = moving_avg(np.array(ppo_reward[0]), len(ppo_reward[0])//100)
        plt.plot(plotting_data)
        plt.show()
        
