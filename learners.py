@@ -439,10 +439,9 @@ class PPOagent(): # does not do value clipping, debug variables, or KL early sto
         
         # init environment
         if vectorised_envs:
-            self.env = gym.vector.SyncVectorEnv([make_env(environment=self.env_name, max_epsiode_steps=trunc)]*self.num_envs)
+            self.env = gym.vector.SyncVectorEnv([make_env(environment=self.env_name, max_epsiode_steps=trunc, capture_video=False)]*self.num_envs)
             self.env = gym.wrappers.vector.RecordEpisodeStatistics(self.env)
             self.env = gym.wrappers.vector.NumpyToTorch(self.env, self.device)
-            
         else:
             self.env = gym.make(env_name, max_episode_steps = max_episode_steps, render_mode='rgb_array')
         

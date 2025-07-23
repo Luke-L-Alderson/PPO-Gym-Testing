@@ -136,7 +136,6 @@ def make_env(environment = 'CartPole-v1', seed = 42, idx = 0, max_epsiode_steps 
         if capture_video:
             if idx == 0:
                 env = RecordVideo(env, video_folder="./training_videos", episode_trigger=lambda t: t % 100 == 0, disable_logger=True)
-        
         return env
     
     return thunk

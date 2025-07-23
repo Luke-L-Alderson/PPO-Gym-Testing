@@ -70,40 +70,58 @@ class ValueNetwork(nn.Module):
 
 # Convolutional agent for pixel inputs - WIP
 class ConvAgent(nn.Module):
-    def __init__(self, input_shape, action_space):
-        super().__init__()
+    def __init__(self, env, kernel_size = 3):
+        super(ConvAgent, self).__init__()
+        print(len(env.observation_space.shape))
+        self.env = env
+        assert len(env.observation_space.shape) == 3 or len(env.observation_space.shape) == 4, "Input must be an image of shape (c, h, w) or (N, c, h, w)"
+        self.batch, self.h, self.w, self.c = env.observation_space.shape[0], env.observation_space.shape[1], env.observation_space.shape[2], 1
         
+        action_space_size = env.single_action_space.n if len(env.action_space) > 1 else env.action_space.n
         
-        input_channels, h, w = input_shape
-        self.conv1 = nn.Conv2d(input_channels, 16, 3) # Input to hidden layer
-        self.conv2 = nn.Conv2d(16, 32, 3)
-        self.conv3  = nn.Conv2d(32, 64, 3)
-        fc_shape = self._get_conv_size(input_shape).prod()
-        #print(f"conv_size_func: {fc_shape}")
-        self.fc1 = nn.Linear(fc_shape, action_space)  # Hidden to output layer
+        assert self.c == 1, "Grayscale only"
+        
+        print(env.observation_space.shape)
+        print(self.c)
+        self.conv_layers = nn.Sequential(nn.Conv2d(self.c, 64, kernel_size),
+                                         nn.ReLU(),
+                                         nn.Conv2d(64, 64, kernel_size),
+                                         nn.ReLU(),
+                                         nn.Conv2d(64, 64, kernel_size),
+                                         nn.Flatten()
+            )
+        
+        self.critic = nn.Sequential(
+            layer_init(nn.Linear(self._get_conv_size(), 512)),  # Input to hidden layer
+            nn.Tanh(),
+            layer_init(nn.Linear(512, 64)),
+            nn.Tanh(),
+            layer_init(nn.Linear(64, 1), std = 1.0),   # Hidden to output layer
+            )
+        
+        self.actor = nn.Sequential(
+            layer_init(nn.Linear(self._get_conv_size(), 512)),  # Input to hidden layer
+            nn.Tanh(),
+            layer_init(nn.Linear(512, 64)),
+            nn.Tanh(),
+            layer_init(nn.Linear(64, action_space_size), std = 0.01),
+            nn.Softmax(-1)
+            )
     
-    def _get_conv_size(self, shape):
-        if type(shape) is not tuple:
-            shape = tuple(shape)
-        x = torch.zeros(shape)
-        x = self.conv1(x)
-        x = F.max_pool2d(x, 2)
-        x = self.conv2(x)
-        x = F.max_pool2d(x, 2)
-        x = self.conv3(x)
-        x = F.max_pool2d(x, 2)
-        x = x.flatten(1)
-        return torch.tensor(x.shape)
+    def _get_conv_size(self):
+        x = torch.zeros((self.batch, self.c, self.h, self.w))
+        print(x.shape)
+        x = self.conv_layers(x)
+        print(x.shape)
+        return x.shape[-1]
     
-    def forward(self, state):
-        x = F.relu(self.conv1(state))
-        x = F.max_pool2d(x, 2)
-        x = F.relu(self.conv2(x))
-        x = F.max_pool2d(x, 2)
-        x = F.relu(self.conv3(x))
-        x = F.max_pool2d(x, 2)
-        #print(f"Before Flattening: {x.shape}")
-        x = x.flatten(1)
-        #print(f"After Flattening: {x.shape}")
-        action_probs = F.softmax(self.fc1(x), dim=-1)  # Apply softmax to output layer
-        return action_probs   
+    def get_val(self, x):
+        x = self.conv_layers(x)
+        return self.critic(x)
+    
+    def get_action_and_value(self, x, action = None):
+        x = self.conv_layers(x)
+        probs = Categorical(self.actor(x))
+        if action is None:
+            action = probs.sample()
+        return action, probs.log_prob(action), probs.entropy(), self.critic(x)
