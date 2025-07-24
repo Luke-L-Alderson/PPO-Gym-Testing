@@ -6,6 +6,8 @@ from torch.distributions import Categorical
 import gymnasium as gym
 from gymnasium.wrappers import RecordVideo
 from collections import defaultdict
+from tetris_gymnasium.wrappers.observation import RgbObservation
+from tetris_gymnasium.mappings.rewards import RewardsMapping
 
 def moving_avg(data, kernel):
     return np.convolve(data, np.ones(kernel), 'valid') / kernel
@@ -140,6 +142,22 @@ def make_env(environment = 'CartPole-v1', seed = 42, idx = 0, max_epsiode_steps 
     
     return thunk
 
+def make_env_t(environment = 'tetris_gymnasium/Tetris', seed = 42, idx = 0, max_epsiode_steps = 1000, capture_video = False, frames = 1):
+    def thunk():
+        rewardmap = RewardsMapping(game_over=-1, alife=0.1, clear_line=2)
+        env = gym.make("tetris_gymnasium/Tetris", render_mode="rgb_array", rewards_mapping = rewardmap)
+        env = RgbObservation(env)
+        if env.render_mode == "rgb_array": env.render_scaling_factor = 5
+        env = gym.wrappers.FrameStackObservation(env, frames)
+        
+        if capture_video:
+            if idx == 0:
+                env = RecordVideo(env, video_folder="./training_videos", episode_trigger=lambda t: t % 100 == 0, disable_logger=True)
+        
+        return env
+    
+    return thunk
+
 def save_gif(frames: np.ndarray, filename: str = "tetris.gif", fps: int = 10, resize_to: tuple[int, int] = None):
     t, c, h, w = frames.shape
     frames.reshape((t, h, w, c))
@@ -159,3 +177,7 @@ def convert_to_one_dict(list_of_dicts):
             if value:
                 result[key].append(value)
     return dict(result)
+
+def stack_frames(x): # [N, F, C, H, W]
+    assert len(x.shape) == 5
+    return x.reshape(x.shape[0], x.shape[1]*x.shape[2], x.shape[3], x.shape[4])

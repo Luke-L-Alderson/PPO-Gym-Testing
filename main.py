@@ -14,21 +14,24 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 def objective(trial):
     
-    params = {'training_steps': 100000,
+    params = {'env_name': 'CartPole-v1',#"CartPole-v1",
+              'training_steps': 1e5,
               'lr': trial.suggest_float('lr', 1e-5, 1e-2, log=True),
               'gamma': trial.suggest_float('gamma', 0.8, 0.99),
               'trunc': 400,
-              'rollout_len': trial.suggest_int('rollout_len', 64, 1024, log=True),
+              'rollout_len': trial.suggest_int('rollout_len', 64, 2048, log=True),
               'eps': 0.2,
               'update_epochs': trial.suggest_int('update_epochs', 1, 10, log=False),
               'entropy': trial.suggest_float('entropy', 0, 0.1),
-              'num_envs': trial.suggest_int('num_envs', 2, 10, step = 2, log=False),
-              'annealing': trial.suggest_categorical("annealing", [True, False])}
+              'num_envs': trial.suggest_int('num_envs', 2, 4, step = 1, log=False),
+              'annealing': trial.suggest_categorical("annealing", [False])}
     
     for (key, val) in params.items():
         print(f"{key} = {val}")
     
-    agent = PPOagent(trial = trial,
+    agent = PPOagent(env_name=params.get("env_name"),
+                     state_space_not_pixels = False if params.get("env_name") == 'tetris_gymnasium/Tetris' else True,
+                     trial = trial,
                      training_steps=params.get("training_steps"),
                      lr = params.get("lr"),
                      gamma = params.get("gamma"),
@@ -38,7 +41,8 @@ def objective(trial):
                      entropy_coef=params.get("entropy"),
                      eps=params.get("eps"),
                      num_envs=params.get("num_envs"),
-                     annealing=params.get("annealing"))
+                     annealing=params.get("annealing"),
+                     record_video=True)
     
     ppo_reward = agent.train_agent()
     assert ppo_reward, "No rewards returned, try increasing training steps, or reducing num_envs * rollout_len"
@@ -57,7 +61,7 @@ if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     # Set this to False to enable a full hyperparameter sweep with optuna
-    one_off = True
+    one_off = False
     
     # Set this True to use Stable Baselines PPO hyperparameters
     sb = False
@@ -78,7 +82,7 @@ if __name__ == '__main__':
                  'lam': 0.95,
                  'val_coef': 0.5,
                  'glob_norm': 0.5,
-                 'annealing': True}
+                 'annealing': False}
        
        stable_baselines_params = {'training_steps': 1e6,
                                   'lr': 3e-4,
@@ -106,7 +110,7 @@ if __name__ == '__main__':
        
        print(f"lr: {params['lr']}\ngamma: {params['gamma']}")
            
-       agent = PPOagent(env_name="Acrobot-v1",
+       agent = PPOagent(env_name="CartPole-v1",
                         training_steps=params.get("training_steps"),
                         lr = params.get("lr"),
                         gamma = params.get("gamma"),
